@@ -16,11 +16,11 @@ import java.util.concurrent.TimeoutException;
  */
 public class HelloRabbitmq {
 	public static void main(String[] args) throws IOException, TimeoutException, InterruptedException {
-//		sendMessage();
-		getMessage();
+		sendMessage();
+//		getMessage();
 	}
 	
-	private static void sendMessage() throws IOException, TimeoutException {
+	private static void sendMessage() throws IOException, TimeoutException, InterruptedException {
 		// mq连接地址
 		String host = "106.13.162.44";
 		//定义一个rabbitmq 的队列名称
@@ -52,14 +52,27 @@ public class HelloRabbitmq {
 			 */
 			channel.queueDeclare(queueName, true, false, false, null);
 			
+			// 设置投递消息为confirm模式
+			channel.confirmSelect();
+			
+			//消息持久化到磁盘后接收到的回掉函数，异步操作
+			channel.addConfirmListener((deliveryTag,multiple)->{
+						//ack 回掉函数，说明消息已经被持久化到磁盘里面了
+						System.out.println("成功----->投递的消息已经被持久化到磁盘里面啦！");
+					},
+					(deliveryTag,multiple)->{
+						// nack回调函数，说明消息并没有被持久化到磁盘中，需要重新投递到mq
+						System.out.println("失败=========>投递的消息持久化到磁盘失败！");
+					});
 			//定义向mq发送的消息
-			String message = "订单消息6";
+			String message = "订单消息13";
 			
 			// 推送一条消息到mq的queueName队列里面去
 			//MessageProperties.PERSISTENT_TEXT_PLAIN 将推送的消息开启消息持久化，重启之mq服务后也能看到队列中的消息
 			//没有指定持久化消息会在mq服务重启后丢失
 			channel.basicPublish("",queueName, MessageProperties.PERSISTENT_TEXT_PLAIN,message.getBytes(StandardCharsets.UTF_8));
 			System.out.println("定点服务发送消息，message=" + message);
+			Thread.sleep(2000);
 		}
 	}
 	
@@ -78,13 +91,18 @@ public class HelloRabbitmq {
 		//创建连接，并且开通channel通道
 		try (Connection connection = connectionFactory.newConnection()) {
 			try (final Channel channel = connection.createChannel()) {
-				/**
+				/*
+				  设置消费者最多同时消费200个，意思是最多有200个消息在消费者中等待手动ack。
+				  prefetchCount 过大会导致消费者消息积压，导致内存溢出，过小导致吞吐量低，效率低下
+				 */
+				channel.basicQos(200);
+				/*
 				 * 定义一个rabbitmq的队列queue，如果不存在就创建，避免消费的时候出现问题
 				 * durable：持久化，如果消息队列已经存在，这里需要和存在的消息队列是否持久化对应。
 				 * 上面发消息创建的true持久化的，这里也要持久化
 				 */
 				channel.queueDeclare(queueName, true, false, false, null);
-				/**
+				/*
 				 * 接受到消息后的接口回调函数，接收到消息就执行方法体
 				 */
 				DeliverCallback deliverCallback = (consumerTag, delivery) -> {
@@ -93,15 +111,15 @@ public class HelloRabbitmq {
 						//获取到消息
 						final String message = new String(delivery.getBody(), StandardCharsets.UTF_8);
 						System.out.println("仓库服务接收到消息，准备执行调度发货流程，message=" + message);
-//						if ("订单消息5".equals(message)) {
-//							System.out.println("我要进行 basicNack 操作了");
-//							channel.basicNack(delivery.getEnvelope().getDeliveryTag(), false, true);
-//						}
+						if ("订单消息6".equals(message)) {
+							System.out.println("我要进行 basicNack 操作了");
+							channel.basicNack(delivery.getEnvelope().getDeliveryTag(), false, true);
+						}
 						
 					} catch (Exception e) {
 						e.printStackTrace();
 						System.out.println("出现异常，我需要通知mq将消息发给别的消费服务！");
-						/**
+						/*
 						 * 消费mq消息的时候出现了异常，这个时候要告诉mq把消息传递给别的服务。
 						 * ，如果调用了 basicNack 通知mq不要ack，在此后在调用 basicAck 清除消息是无法清除的。
 						 * 如果同时调用了 basicNack 和 basicAck 会出现异常 AlreadyClosedException
@@ -115,13 +133,13 @@ public class HelloRabbitmq {
 						channel.basicAck(delivery.getEnvelope().getDeliveryTag(), true);
 					}
 				};
-				/**
+				/*
 				 *  queueName： 监听的消息队列名称，
 				 *  true：如果有消息就消费出来，只要消息被投递到服务里面了，立马删除mq中的消息，传递false就是关闭了autoAck行为，则需要手动ack
 				 *  deliverCallback：消费出来的消息交给deliverCallback的回调函数处理
 				 */
 				channel.basicConsume(queueName, false, deliverCallback, System.out::println);
-				Thread.sleep(10000);
+				Thread.sleep(2000);
 				System.out.println("line " + getLineNumber() + "线程名称：" + Thread.currentThread().getName());
 			}
 		}
