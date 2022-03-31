@@ -37,7 +37,7 @@
         <local-ip-at>@127.0.0.1</local-ip-at>
 
         <!--   依赖   -->
-        <spring-boot-version>2.2.6.RELEASE</spring-boot-version>
+        <spring-boot-version>2.5.12</spring-boot-version>
         <slf4j-version>1.7.28</slf4j-version>
         <guava-version>16.0.1</guava-version>
         <jackson-version>2.10.0.pr1</jackson-version>
